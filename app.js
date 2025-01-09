@@ -6,6 +6,8 @@ const Database = require("./classes/database.js");
 const app = express();
 const port = 3000;
 
+const router = express.Router();
+
 // Enable CORS
 app.use(
   cors({
@@ -30,6 +32,7 @@ app.get("/campingspots", (req, res) => {
     cs.price_per_night, 
     cs.capacity, 
     cs.availability_status,
+    cs.description,
     COALESCE(AVG(r.rating), 0) AS average_rating,
     COALESCE(
         (SELECT i.image_url 
@@ -39,11 +42,11 @@ app.get("/campingspots", (req, res) => {
         'https://via.placeholder.com/300x200'
     ) AS image_url,
     COALESCE(
-        GROUP_CONCAT(t.name SEPARATOR ', '),
+        GROUP_CONCAT(DISTINCT t.name SEPARATOR ', '),
         'No tags available'
     ) AS tags,
     COALESCE(
-        GROUP_CONCAT(a.name SEPARATOR ', '),
+        GROUP_CONCAT(DISTINCT a.name SEPARATOR ', '),
         'No amenities available'
     ) AS amenities
 FROM 
@@ -91,46 +94,58 @@ app.get("/campingspots/:id", (req, res) => {
   const db = new Database();
   // req.params.id;
   const query = `
-    SELECT 
-    cs.camping_spot_id, 
-    cs.name AS camping_spot_name, 
-    cs.location, 
-    cs.price_per_night, 
-    cs.capacity, 
-    cs.availability_status,
-    COALESCE(AVG(r.rating), 0) AS average_rating,
-    COALESCE(
-        (SELECT i.image_url 
-         FROM Image i 
-         WHERE i.camping_spot_id = cs.camping_spot_id 
-         ORDER BY i.upload_date DESC LIMIT 1),
-        'https://via.placeholder.com/300x200'
-    ) AS image_url,
-    COALESCE(
-        GROUP_CONCAT(t.name SEPARATOR ', '),
-        'No tags available'
-    ) AS tags
+  SELECT 
+  cs.camping_spot_id, 
+  cs.name AS camping_spot_name, 
+  cs.location, 
+  cs.price_per_night, 
+  cs.capacity, 
+  cs.availability_status,
+  cs.description,
+  COALESCE(AVG(r.rating), 0) AS average_rating,
+  COALESCE(
+      (SELECT i.image_url 
+       FROM Image i 
+       WHERE i.camping_spot_id = cs.camping_spot_id 
+       ORDER BY i.upload_date DESC LIMIT 1),
+      'https://via.placeholder.com/300x200'
+  ) AS image_url,
+  COALESCE(
+      GROUP_CONCAT(t.name SEPARATOR ', '),
+      'No tags available'
+  ) AS tags,
+  COALESCE(
+      GROUP_CONCAT(DISTINCT a.name SEPARATOR ', '),
+      'No amenities available'
+  ) AS amenities -- Add amenities here
 FROM 
-    CampingSpot cs
-
+  CampingSpot cs
 LEFT JOIN 
-    Review r 
+  Review r 
 ON 
-    cs.camping_spot_id = r.camping_spot_id
+  cs.camping_spot_id = r.camping_spot_id
 LEFT JOIN 
-    CampingSpotTag cst 
+  CampingSpotTag cst 
 ON 
-    cs.camping_spot_id = cst.camping_spot_id
+  cs.camping_spot_id = cst.camping_spot_id
 LEFT JOIN 
-    Tag t 
+  Tag t 
 ON 
-    cst.tag_id = t.tag_id
+  cst.tag_id = t.tag_id
+LEFT JOIN 
+  CampingSpotAmenity csa
+ON 
+  cs.camping_spot_id = csa.camping_spot_id
+LEFT JOIN 
+  Amenity a
+ON 
+  csa.amenity_id = a.amenity_id
 WHERE 
-    cs.camping_spot_id = '${req.params.id}'
+  cs.camping_spot_id = '${req.params.id}'
 GROUP BY 
-    cs.camping_spot_id
+  cs.camping_spot_id
 ORDER BY 
-    average_rating DESC;    
+  average_rating DESC;    
   `;
   db.getQuery(query).then((campingSpot) => {
     if (campingSpot[0]) {
@@ -296,25 +311,165 @@ app.put("/profile/password", async (req, res) => {
 });
 
 //BOOKING endpoint
-app.post("/my-bookings", async (req, res) => {
-  const { userId, campingSpotId, startDate, endDate, totalPrice } = req.body;
+app.get("/my-bookings", async (req, res) => {
+  const userId = req.query.userId;
 
   const query = `
-      INSERT INTO Booking (user_id, camping_spot_id, start_date, end_date, total_price, status)
-      VALUES (?, ?, ?, ?, ?, 'Pending');
+      SELECT * FROM Booking WHERE user_id = ?
     `;
 
   try {
-    await db.getQuery(query, [
-      userId,
+    const db = new Database();
+    const bookings = await db.getQuery(query, [userId]);
+    res.send(bookings);
+    // res.status(200).json({ message: "Booking created successfully!" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to get bookings." });
+  }
+});
+
+//create booking endpoint yayy
+
+app.post("/create-booking", async (req, res) => {
+  const { campingSpotId, startDate, endDate, guestCount, userId } = req.body;
+
+  // Validate input
+  if (!campingSpotId || !startDate || !endDate || !guestCount || !userId) {
+    return res.status(400).json({ error: "All fields are required." });
+  }
+
+  const db = new Database();
+
+  try {
+    // Fetch price per night for the camping spot
+    const priceQuery = `
+      SELECT price_per_night 
+      FROM CampingSpot 
+      WHERE camping_spot_id = ?
+    `;
+    const [priceResult] = await db.executeQuery(priceQuery, [campingSpotId]);
+
+    if (priceResult.length === 0) {
+      return res.status(404).json({ error: "Camping spot not found." });
+    }
+
+    const pricePerNight = priceResult[0].price_per_night;
+
+    // Calculate the total price
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    const duration = (endDateObj - startDateObj) / (1000 * 60 * 60 * 24); // Duration in days
+
+    if (duration <= 0) {
+      return res
+        .status(400)
+        .json({ error: "End date must be after the start date." });
+    }
+
+    console.error(pricePerNight);
+    console.error(duration);
+
+    const totalPrice = duration * pricePerNight;
+
+    // Insert the booking into the database
+    const createBookingQuery = `
+      INSERT INTO Booking (camping_spot_id, start_date, end_date, total_price, status, capacity, user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    const bookingData = [
       campingSpotId,
       startDate,
       endDate,
       totalPrice,
-    ]);
-    res.status(201).json({ message: "Booking created successfully!" });
+      "Pending", // Default status
+      guestCount,
+      userId,
+    ];
+
+    const result = await db.executeQuery(createBookingQuery, bookingData);
+
+    // if (result.affectedRows === 1) {
+    return res
+      .status(201)
+      .json({ message: "Booking created successfully.", totalPrice });
+    // } else {
+    //   return res.status(500).json({ error: "Failed to create booking." });
+    // }
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ error: "An error occurred while creating the booking." });
+  }
+});
+
+//owner spots fetching
+app.get("/owner-spots", async (req, res) => {
+  const ownerId = req.query.ownerId;
+  if (!ownerId) {
+    return res.status(400).json({ message: "Owner ID is required" });
+  }
+
+  const query = `
+    SELECT 
+      cs.camping_spot_id,
+      cs.name,
+      cs.location,
+      cs.price_per_night,
+      cs.image_url
+    FROM CampingSpot cs
+    WHERE cs.owner_id = ?;
+  `;
+
+  try {
+    const db = new Database();
+    const spots = await db.getQuery(query, [ownerId]);
+    res.status(200).json(spots);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to create booking." });
+    console.error("Error fetching camping spots:", err);
+    res.status(500).json({ message: "Failed to fetch camping spots." });
+  }
+});
+
+//PUSH POST AQCUIRED DATA FOR CREATING NEW CAMPING SPOT TO DATabASE
+const multer = require("multer");
+const upload = multer({ dest: "uploads/" });
+
+app.post("/create-campingspot", upload.array("images"), async (req, res) => {
+  const {
+    name,
+    capacity,
+    price_per_night,
+    location,
+    description,
+    tags,
+    amenities,
+  } = req.body;
+  const images = req.files;
+
+  try {
+    const db = new Database();
+    const query = `
+      INSERT INTO CampingSpot (name, capacity, price_per_night, location, description, tags, amenities, owner_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const ownerId = req.session.user.id; // Assuming session contains user info
+    await db.getQuery(query, [
+      name,
+      capacity,
+      price_per_night,
+      location,
+      description,
+      tags,
+      amenities,
+      ownerId,
+    ]);
+
+    // Handle file upload logic here (e.g., save file paths to database)
+    res.status(201).send("Camping spot created successfully!");
+  } catch (error) {
+    console.error("Error creating camping spot:", error);
+    res.status(500).send("Failed to create camping spot.");
   }
 });

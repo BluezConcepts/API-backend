@@ -20,6 +20,11 @@ class Database {
 
     return rows;
   }
+
+  async executeQuery(sql, params) {
+    const connection = await this.connect();
+    return await connection.execute(sql, params);
+  }
 }
 
 module.exports = Database;
