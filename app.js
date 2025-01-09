@@ -111,12 +111,12 @@ app.get("/campingspots/:id", (req, res) => {
       'https://via.placeholder.com/300x200'
   ) AS image_url,
   COALESCE(
-      GROUP_CONCAT(t.name SEPARATOR ', '),
-      'No tags available'
+      GROUP_CONCAT(DISTINCT t.name SEPARATOR ', '),
+      NULL
   ) AS tags,
   COALESCE(
       GROUP_CONCAT(DISTINCT a.name SEPARATOR ', '),
-      'No amenities available'
+      NULL
   ) AS amenities -- Add amenities here
 FROM 
   CampingSpot cs
@@ -416,8 +416,7 @@ app.get("/owner-spots", async (req, res) => {
       cs.camping_spot_id,
       cs.name,
       cs.location,
-      cs.price_per_night,
-      cs.image_url
+      cs.price_per_night
     FROM CampingSpot cs
     WHERE cs.owner_id = ?;
   `;
@@ -445,31 +444,215 @@ app.post("/create-campingspot", upload.array("images"), async (req, res) => {
     description,
     tags,
     amenities,
+    owner_id,
   } = req.body;
   const images = req.files;
 
   try {
     const db = new Database();
     const query = `
-      INSERT INTO CampingSpot (name, capacity, price_per_night, location, description, tags, amenities, owner_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO CampingSpot (name, capacity, price_per_night, location, description, owner_id)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
-    const ownerId = req.session.user.id; // Assuming session contains user info
-    await db.getQuery(query, [
+    const queryResult = await db.getQuery(query, [
       name,
       capacity,
       price_per_night,
       location,
       description,
-      tags,
-      amenities,
-      ownerId,
+      owner_id,
     ]);
+
+    // Ensure tags and amenities are arrays
+    let parsedTags = Array.isArray(tags) ? tags : tags.split(",") || [];
+    if (parsedTags[0] === "") {
+      parsedTags = [];
+    }
+    let parsedAmenities = Array.isArray(amenities)
+      ? amenities
+      : amenities.split(",") || [];
+
+    if (parsedAmenities[0] === "") {
+      parsedAmenities = [];
+    }
+
+    // Update tags
+    if (parsedTags && parsedTags.length > 0) {
+      const insertTagsQuery = `
+        INSERT INTO CampingSpotTag (camping_spot_id, tag_id) 
+        VALUES ${parsedTags.map(() => "(?, ?)").join(", ")}
+      `;
+      const tagValues = parsedTags.flatMap((tagId) => [
+        queryResult.insertId,
+        tagId,
+      ]);
+      await db.getQuery(insertTagsQuery, tagValues);
+    }
+
+    // Update amenities
+    if (parsedAmenities && parsedAmenities.length > 0) {
+      const insertAmenitiesQuery = `
+        INSERT INTO CampingSpotAmenity (camping_spot_id, amenity_id) 
+        VALUES ${parsedAmenities.map(() => "(?, ?)").join(", ")}
+      `;
+      const amenityValues = parsedAmenities.flatMap((amenityId) => [
+        queryResult.insertId,
+        amenityId,
+      ]);
+      await db.getQuery(insertAmenitiesQuery, amenityValues);
+    }
 
     // Handle file upload logic here (e.g., save file paths to database)
     res.status(201).send("Camping spot created successfully!");
   } catch (error) {
     console.error("Error creating camping spot:", error);
     res.status(500).send("Failed to create camping spot.");
+  }
+});
+
+app.delete("/delete-campingspot/:id", async (req, res) => {
+  const campingSpotId = req.params.id;
+
+  if (!campingSpotId) {
+    return res.status(400).json({ message: "Camping spot ID is required." });
+  }
+
+  try {
+    const db = new Database();
+
+    // Delete related images
+    const deleteImagesQuery = `DELETE FROM Image WHERE camping_spot_id = ?`;
+    await db.getQuery(deleteImagesQuery, [campingSpotId]);
+
+    // Delete related tags
+    const deleteTagsQuery = `DELETE FROM CampingSpotTag WHERE camping_spot_id = ?`;
+    await db.getQuery(deleteTagsQuery, [campingSpotId]);
+
+    // Delete related amenities
+    const deleteAmenitiesQuery = `DELETE FROM CampingSpotAmenity WHERE camping_spot_id = ?`;
+    await db.getQuery(deleteAmenitiesQuery, [campingSpotId]);
+
+    // Delete the camping spot
+    const deleteCampingSpotQuery = `DELETE FROM CampingSpot WHERE camping_spot_id = ?`;
+    const result = await db.getQuery(deleteCampingSpotQuery, [campingSpotId]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Camping spot not found." });
+    }
+
+    res.status(200).json({ message: "Camping spot deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting camping spot:", error);
+    res.status(500).json({ message: "Failed to delete camping spot." });
+  }
+});
+
+app.put("/update-campingspot/:id", upload.array("images"), async (req, res) => {
+  const {
+    name,
+    capacity,
+    price_per_night,
+    location,
+    description,
+    tags, // Should be an array of tag IDs
+    amenities, // Should be an array of amenity IDs
+  } = req.body;
+  const images = req.files;
+  const campingSpotId = req.params.id;
+
+  try {
+    const db = new Database();
+
+    console.error("sakdjjlkafdsjlfdsa;jlkdfa;jkldfs");
+    console.error(JSON.stringify(amenities));
+
+    // Update the camping spot details
+    const updateQuery = `
+      UPDATE CampingSpot 
+      SET name = ?, 
+          capacity = ?, 
+          price_per_night = ?, 
+          location = ?, 
+          description = ?
+      WHERE camping_spot_id = ?
+    `;
+    await db.getQuery(updateQuery, [
+      name,
+      capacity,
+      price_per_night,
+      location,
+      description,
+      campingSpotId,
+    ]);
+
+    // Ensure tags and amenities are arrays
+    let parsedTags = Array.isArray(tags) ? tags : tags.split(",") || [];
+    if (parsedTags[0] === "") {
+      parsedTags = [];
+    }
+    let parsedAmenities = Array.isArray(amenities)
+      ? amenities
+      : amenities.split(",") || [];
+
+    if (parsedAmenities[0] === "") {
+      parsedAmenities = [];
+    }
+
+    // Update tags
+    const deleteTagsQuery = `DELETE FROM CampingSpotTag WHERE camping_spot_id = ?`;
+    await db.getQuery(deleteTagsQuery, [campingSpotId]);
+
+    console.error("weeeee");
+    // console.error(JSON.stringify(parsed));
+
+    if (parsedTags && parsedTags.length > 0) {
+      const insertTagsQuery = `
+        INSERT INTO CampingSpotTag (camping_spot_id, tag_id) 
+        VALUES ${parsedTags.map(() => "(?, ?)").join(", ")}
+      `;
+      const tagValues = parsedTags.flatMap((tagId) => [campingSpotId, tagId]);
+      await db.getQuery(insertTagsQuery, tagValues);
+    }
+
+    // Update amenities
+    const deleteAmenitiesQuery = `DELETE FROM CampingSpotAmenity WHERE camping_spot_id = ?`;
+    await db.getQuery(deleteAmenitiesQuery, [campingSpotId]);
+
+    console.log("reeeeeeee");
+    console.log(JSON.stringify(parsedAmenities));
+
+    if (parsedAmenities && parsedAmenities.length > 0) {
+      const insertAmenitiesQuery = `
+        INSERT INTO CampingSpotAmenity (camping_spot_id, amenity_id) 
+        VALUES ${parsedAmenities.map(() => "(?, ?)").join(", ")}
+      `;
+      const amenityValues = parsedAmenities.flatMap((amenityId) => [
+        campingSpotId,
+        amenityId,
+      ]);
+      await db.getQuery(insertAmenitiesQuery, amenityValues);
+    }
+
+    // Handle image uploads
+    if (images && images.length > 0) {
+      const deleteImagesQuery = `DELETE FROM Image WHERE camping_spot_id = ?`;
+      await db.getQuery(deleteImagesQuery, [campingSpotId]);
+
+      const insertImagesQuery = `
+        INSERT INTO Image (camping_spot_id, image_url, alt_text) 
+        VALUES ${images.map(() => "(?, ?, ?)").join(", ")}
+      `;
+      const imageValues = images.flatMap((image) => [
+        campingSpotId,
+        `/uploads/${image.filename}`,
+        image.originalname,
+      ]);
+      await db.getQuery(insertImagesQuery, imageValues);
+    }
+
+    res.status(200).send("Camping spot updated successfully!");
+  } catch (error) {
+    console.error("Error updating camping spot:", error);
+    res.status(500).send("Failed to update camping spot.");
   }
 });
