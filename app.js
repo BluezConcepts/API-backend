@@ -41,7 +41,11 @@ app.get("/campingspots", (req, res) => {
     COALESCE(
         GROUP_CONCAT(t.name SEPARATOR ', '),
         'No tags available'
-    ) AS tags
+    ) AS tags,
+    COALESCE(
+        GROUP_CONCAT(a.name SEPARATOR ', '),
+        'No amenities available'
+    ) AS amenities
 FROM 
     CampingSpot cs
 LEFT JOIN 
@@ -54,14 +58,21 @@ ON
     cs.camping_spot_id = cst.camping_spot_id
 LEFT JOIN 
     Tag t 
-    
 ON 
     cst.tag_id = t.tag_id
-
+LEFT JOIN 
+    CampingSpotAmenity csa
+ON 
+    cs.camping_spot_id = csa.camping_spot_id
+LEFT JOIN 
+    Amenity a
+ON 
+    csa.amenity_id = a.amenity_id
 GROUP BY 
     cs.camping_spot_id
 ORDER BY 
     average_rating DESC;
+
 `;
   db.getQuery(query)
     .then((campingSpots) => {
