@@ -519,9 +519,9 @@ app.delete("/delete-campingspot/:id", async (req, res) => {
   try {
     const db = new Database();
 
-    // Delete related images
-    const deleteImagesQuery = `DELETE FROM Image WHERE camping_spot_id = ?`;
-    await db.getQuery(deleteImagesQuery, [campingSpotId]);
+    // // Delete related images
+    // const deleteImagesQuery = `DELETE FROM Image WHERE camping_spot_id = ?`;
+    // await db.getQuery(deleteImagesQuery, [campingSpotId]);
 
     // Delete related tags
     const deleteTagsQuery = `DELETE FROM CampingSpotTag WHERE camping_spot_id = ?`;
@@ -546,7 +546,7 @@ app.delete("/delete-campingspot/:id", async (req, res) => {
   }
 });
 
-app.put("/update-campingspot/:id", upload.array("images"), async (req, res) => {
+app.put("/update-campingspot/:id", async (req, res) => {
   const {
     name,
     capacity,
@@ -556,7 +556,7 @@ app.put("/update-campingspot/:id", upload.array("images"), async (req, res) => {
     tags, // Should be an array of tag IDs
     amenities, // Should be an array of amenity IDs
   } = req.body;
-  const images = req.files;
+  // const images = req.files;
   const campingSpotId = req.params.id;
 
   try {
