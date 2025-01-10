@@ -748,3 +748,26 @@ app.post("/decline-booking/:bookingId", async (req, res) => {
     res.status(500).json({ message: "Failed to decline the booking." });
   }
 });
+
+//UNAVAILABILITY DATES
+app.get("/unavailable-dates", async (req, res) => {
+  const { campingSpotId } = req.query;
+  if (!campingSpotId) {
+    return res.status(400).json({ message: "Camping spot ID is required." });
+  }
+
+  const query = `
+    SELECT start_date, end_date, reason 
+    FROM UnavailableDates 
+    WHERE camping_spot_id = ?;
+  `;
+
+  try {
+    const db = new Database();
+    const unavailableDates = await db.getQuery(query, [campingSpotId]);
+    res.status(200).json(unavailableDates);
+  } catch (err) {
+    console.error("Error fetching unavailable dates:", err);
+    res.status(500).json({ message: "Failed to fetch unavailable dates." });
+  }
+});
