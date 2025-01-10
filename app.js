@@ -432,10 +432,10 @@ app.get("/owner-spots", async (req, res) => {
 });
 
 //PUSH POST AQCUIRED DATA FOR CREATING NEW CAMPING SPOT TO DATabASE
-const multer = require("multer");
-const upload = multer({ dest: "uploads/" });
+// const multer = require("multer");
+// const upload = multer({ dest: "uploads/" });
 
-app.post("/create-campingspot", upload.array("images"), async (req, res) => {
+app.post("/create-campingspot", async (req, res) => {
   const {
     name,
     capacity,
@@ -446,7 +446,7 @@ app.post("/create-campingspot", upload.array("images"), async (req, res) => {
     amenities,
     owner_id,
   } = req.body;
-  const images = req.files;
+  //const images = req.files;
 
   try {
     const db = new Database();
@@ -502,7 +502,6 @@ app.post("/create-campingspot", upload.array("images"), async (req, res) => {
       await db.getQuery(insertAmenitiesQuery, amenityValues);
     }
 
-    // Handle file upload logic here (e.g., save file paths to database)
     res.status(201).send("Camping spot created successfully!");
   } catch (error) {
     console.error("Error creating camping spot:", error);
@@ -634,21 +633,21 @@ app.put("/update-campingspot/:id", upload.array("images"), async (req, res) => {
     }
 
     // Handle image uploads
-    if (images && images.length > 0) {
-      const deleteImagesQuery = `DELETE FROM Image WHERE camping_spot_id = ?`;
-      await db.getQuery(deleteImagesQuery, [campingSpotId]);
+    // if (images && images.length > 0) {
+    //   const deleteImagesQuery = `DELETE FROM Image WHERE camping_spot_id = ?`;
+    //   await db.getQuery(deleteImagesQuery, [campingSpotId]);
 
-      const insertImagesQuery = `
-        INSERT INTO Image (camping_spot_id, image_url, alt_text) 
-        VALUES ${images.map(() => "(?, ?, ?)").join(", ")}
-      `;
-      const imageValues = images.flatMap((image) => [
-        campingSpotId,
-        `/uploads/${image.filename}`,
-        image.originalname,
-      ]);
-      await db.getQuery(insertImagesQuery, imageValues);
-    }
+    //   const insertImagesQuery = `
+    //     INSERT INTO Image (camping_spot_id, image_url, alt_text)
+    //     VALUES ${images.map(() => "(?, ?, ?)").join(", ")}
+    //   `;
+    //   const imageValues = images.flatMap((image) => [
+    //     campingSpotId,
+    //     `/uploads/${image.filename}`,
+    //     image.originalname,
+    //   ]);
+    //   await db.getQuery(insertImagesQuery, imageValues);
+    // }
 
     res.status(200).send("Camping spot updated successfully!");
   } catch (error) {
