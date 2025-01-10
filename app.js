@@ -656,3 +656,95 @@ app.put("/update-campingspot/:id", upload.array("images"), async (req, res) => {
     res.status(500).send("Failed to update camping spot.");
   }
 });
+
+// get all bookings of specific campingspot
+
+app.get("/camping-spot-bookings", async (req, res) => {
+  const db = new Database();
+  const { campingSpotId } = req.query;
+
+  if (!campingSpotId) {
+    return res.status(400).json({ message: "Camping spot ID is required." });
+  }
+
+  const query = `
+    SELECT 
+      b.booking_id,
+      u.name AS user_name,
+      u.email AS user_email,
+      b.start_date,
+      b.end_date,
+      b.total_price,
+      b.capacity,
+      b.status
+    FROM Booking b
+    JOIN User u ON b.user_id = u.user_id
+    WHERE b.camping_spot_id = ?;
+  `;
+
+  try {
+    const db = new Database();
+    const bookings = await db.getQuery(query, [campingSpotId]);
+    res.status(200).json(bookings);
+  } catch (err) {
+    console.error("Error fetching bookings:", err);
+    res.status(500).json({ message: "Failed to fetch bookings." });
+  }
+});
+
+//accept booking
+//const Database = require("./database");
+//const db = new Database();
+
+app.post("/accept-booking/:bookingId", async (req, res) => {
+  const db = new Database();
+  const { bookingId } = req.params;
+
+  if (!bookingId) {
+    return res.status(400).json({ message: "Booking ID is required." });
+  }
+
+  const query = `
+    UPDATE Booking
+    SET status = 'Accepted'
+    WHERE booking_id = ?;
+  `;
+
+  try {
+    const result = await db.executeQuery(query, [bookingId]);
+    if (result[0].affectedRows === 0) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+    res.status(200).json({ message: "Booking accepted successfully." });
+  } catch (error) {
+    console.error("Error accepting booking:", error);
+    res.status(500).json({ message: "Failed to accept the booking." });
+  }
+});
+
+//decline boookign req
+app.post("/decline-booking/:bookingId", async (req, res) => {
+  const db = new Database();
+  const { bookingId } = req.params;
+
+  if (!bookingId) {
+    return res.status(400).json({ message: "Booking ID is required." });
+  }
+
+  const query = `
+    UPDATE Booking
+    SET status = 'Declined'
+    WHERE booking_id = ?;
+  `;
+
+  try {
+    const result = await db.executeQuery(query, [bookingId]);
+    if (result[0].affectedRows === 0) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+    res.status(200).json({ message: "Booking declined successfully." });
+  } catch (error) {
+    console.error("Error declining booking:", error);
+    res.status(500).json({ message: "Failed to decline the booking." });
+  }
+});
