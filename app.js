@@ -771,3 +771,49 @@ app.get("/unavailable-dates", async (req, res) => {
     res.status(500).json({ message: "Failed to fetch unavailable dates." });
   }
 });
+
+//update DATA unavaiability :
+app.post("/update-unavailable-dates/:campingSpotId", async (req, res) => {
+  const { campingSpotId } = req.params;
+  const { dates } = req.body;
+
+  console.log("Camping Spot ID:", campingSpotId); // Debug log
+
+  if (!campingSpotId || !dates || !Array.isArray(dates)) {
+    return res.status(400).json({ message: "Invalid request data." });
+  }
+
+  const db = new Database();
+  const deleteQuery = `
+    DELETE FROM UnavailableDates 
+    WHERE camping_spot_id = ? AND reason = 'Owner Unavailability';
+  `;
+  const insertQuery = `
+    INSERT INTO UnavailableDates (camping_spot_id, start_date, end_date, reason) 
+    VALUES (?, ?, ?, 'Owner Unavailability');
+  `;
+
+  try {
+    await db.executeQuery(deleteQuery, [campingSpotId]);
+
+    for (const date of dates) {
+      if (!campingSpotId || isNaN(campingSpotId)) {
+        console.error("Invalid campingSpotId:", campingSpotId);
+        continue; // Skip this iteration
+      }
+
+      await db.executeQuery(insertQuery, [
+        parseInt(campingSpotId, 10),
+        date.start_date,
+        date.end_date,
+      ]);
+    }
+
+    res
+      .status(200)
+      .json({ message: "Unavailable dates updated successfully." });
+  } catch (err) {
+    console.error("Error updating unavailable dates:", err);
+    res.status(500).json({ message: "Failed to update unavailable dates." });
+  }
+});
